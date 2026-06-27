@@ -1,10 +1,12 @@
 #include "SessionStore.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <format>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -100,12 +102,12 @@ std::filesystem::path SessionStore::SessionSavePath() const
 
 std::vector<std::string> SessionStore::ListSessions() const
 {
-    std::vector<std::string> sessions;
+    std::vector<std::filesystem::path> sessions_path;
 
     auto dir = SessionSavePath();
 
     if (!std::filesystem::exists(dir)) {
-        return sessions;
+        return std::vector<std::string>{};
     }
 
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
@@ -119,10 +121,26 @@ std::vector<std::string> SessionStore::ListSessions() const
             continue;
         }
 
-        sessions.push_back(path.stem().string());
+        sessions_path.push_back(path);
     }
 
-    std::sort(sessions.begin(), sessions.end());
+    std::sort(sessions_path.begin(), sessions_path.end(),
+        [](
+            const std::filesystem::path& a,
+            const std::filesystem::path& b
+        ) {
+            auto time_a = std::filesystem::last_write_time(a);
+            auto time_b = std::filesystem::last_write_time(b);
+            return time_a < time_b;
+        }
+    );
+
+    std::vector<std::string> sessions;
+    for (const auto& s : sessions_path) {
+        auto last_access_time = std::filesystem::last_write_time(s);
+        std::string last_access_formatted = std::format("{:%F %R}", last_access_time);
+        sessions.push_back(s.stem().string() + " Last used: " + last_access_formatted);
+    }
 
     return sessions;
 }

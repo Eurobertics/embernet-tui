@@ -54,8 +54,8 @@ class OllamaClient {
 
         ToolManager& tools_;
 
-        std::string url_ = "http://brainbox.fritz.box:11434/api/chat";
-        std::string url_model_list_ = "http://brainbox.fritz.box:11434/api/tags";
+        std::string url_ = "http://127.0.0.1:11434/api/chat";
+        std::string url_model_list_ = "http://127.0.0.1:11434/api/tags";
 
         PromptProvider prompt_provider_;
 };

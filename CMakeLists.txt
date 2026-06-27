@@ -50,6 +50,7 @@ enable_testing()
 add_executable(test_tool_manager
     tests/test_tool_manager.cpp
     src/tool/ToolManager.cpp
+    src/config/AppConfig.cpp
 )
 
 target_link_libraries(test_tool_manager
@@ -70,6 +71,7 @@ add_executable(embernet_tui
     src/config/PromptProvider.cpp
     src/app/SlashCommand.cpp
     src/session/SessionStore.cpp
+    src/config/AppConfig.cpp
 )
 
 target_link_libraries(embernet_tui

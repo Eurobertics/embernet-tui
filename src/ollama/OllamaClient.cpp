@@ -15,6 +15,8 @@ OllamaClient::OllamaClient(ToolManager& tools, const AppConfig& config)
     : tools_(tools),
     prompt_provider_(config.prompt_file)
 {
+    url_ = config.base_api_url + "/api/chat";
+    url_model_list_ = config.base_api_url + "/api/tags";
 }
 
 OllamaClient::json OllamaClient::BuildMessagesJson(

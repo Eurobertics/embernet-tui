@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <ftxui/dom/deprecated.hpp>
@@ -31,6 +32,8 @@ App::App(AppConfig config)
     tools_(config_),
     ollama_(tools_, config_)
 {
+    model_ = config_.default_model;
+
     tools_.SetApprovalCallback([this](const ToolCall& call) {
         return RequestApproval(call);
     });
@@ -118,10 +121,20 @@ void App::Run() {
 ftxui::Element App::RenderHead() {
     using namespace ftxui;
 
+    std::string backend = config_.llm_backend;
+    backend[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(backend[0])));
+    std::string location = (
+        config_.base_api_url.find("localhost") != std::string::npos ||
+        config_.base_api_url.find("127.0.0.1") != std::string::npos) ?
+        "local LLM" :
+        "remote LLM";
+
     return hbox({
         text(" EmberNet-TUI "),
+        separator(),
+        text (" " + config_.session_name + " "),
         filler(),
-        text(" Ollama local "),
+        text(" " + backend + " " + location + " "),
     })
     | border
     | color(Color::Green);
@@ -546,10 +559,11 @@ void App::ProcessEvents() {
         }
 
         if (event.type == AppEvent::Type::Done) {
-            input_tokens_ = event.input_tokens;
-            output_tokens_ = event.output_tokens;
+            input_tokens_ += event.input_tokens;
+            output_tokens_ += event.output_tokens;
             agent_state_.clear();
             is_thinking_ = false;
+            SaveSession();
         }
 
         if (event.type == AppEvent::Type::Error) {
@@ -636,7 +650,8 @@ ftxui::Element App::RenderApprovalDialog()
     | border
         | size(WIDTH, LESS_THAN, 80)
         | color(Color::Red)
-        | bgcolor(Color::White);
+        | bgcolor(Color::White)
+        | clear_under;
 }
 
 bool App::HandleSlashCommand()
@@ -715,7 +730,8 @@ ftxui::Element App::RenderSlashCommandDialog()
                     hbox({
                         text("  " + command.name) | size(WIDTH, EQUAL, 16) | bold,
                         separatorEmpty(),
-                        text(command.description) | dim
+                        text(command.description) | dim,
+                        filler()
                         })
                     );
         }
@@ -728,7 +744,8 @@ ftxui::Element App::RenderSlashCommandDialog()
         | border
         | size(WIDTH, LESS_THAN, 70)
         | color(Color::LightSkyBlue1)
-        | bgcolor(Color::Black);
+        | bgcolor(Color::Black)
+        | clear_under;
 }
 
 ftxui::Element App::RenderModelListDialog()
@@ -762,7 +779,8 @@ ftxui::Element App::RenderModelListDialog()
     return vbox(rows)
         | border
         | size(WIDTH, LESS_THAN, 60)
-        | size(HEIGHT, LESS_THAN, 20);
+        | size(HEIGHT, LESS_THAN, 20)
+        | clear_under;
 }
 
 void App::RefreshFilePickerEntries()
@@ -856,7 +874,8 @@ ftxui::Element App::RenderFilePickerDialog()
     | border
         | size(WIDTH, LESS_THAN, 70)
         | color(Color::LightSkyBlue1)
-        | bgcolor(Color::Black);
+        | bgcolor(Color::Black)
+        | clear_under;
 }
 
 std::vector<std::filesystem::path> App::ExtractAttachmentPaths(const std::string& text) const
