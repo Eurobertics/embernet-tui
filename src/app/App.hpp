@@ -140,5 +140,9 @@ private:
     SessionStore session_store_;
     void LoadSession();
     void SaveSession();
+
+    // Info Modal
+    ftxui::Element RenderInfoModalDialog();
+    bool info_modal_open_ = false;
 };
 

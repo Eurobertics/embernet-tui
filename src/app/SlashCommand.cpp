@@ -17,6 +17,8 @@ SlashCommand SlashCommandParser::Parse(const std::string& input)
         result.type = SlashCommandType::Model;
     } else if (command == "/list-llms") {
         result.type = SlashCommandType::ModelList;
+    } else if (command == "/info") {
+        result.type = SlashCommandType::SessionInfo;
     } else {
         result.type = SlashCommandType::Unknown;
     }
@@ -34,7 +36,8 @@ std::vector<SlashCommandInfo> SlashCommandParser::AvailableCommands(const std::s
     return {
         {"/exit", "Beendet das Programm"},
         {"/model", "LLM Modellwahl (Aktuell: " + current_model + ")"},
-        {"/list-llms", "Liste lokal verfügbarer LLMs"}
+        {"/list-llms", "Liste lokal verfügbarer LLMs"},
+        {"/info", "Aktuelle Session Informationen"}
     };
 }
 

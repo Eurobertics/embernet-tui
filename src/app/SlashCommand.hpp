@@ -7,7 +7,8 @@ enum class SlashCommandType {
     Unknown,
     Exit,
     Model,
-    ModelList
+    ModelList,
+    SessionInfo
 };
 
 struct SlashCommand {

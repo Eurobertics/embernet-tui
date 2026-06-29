@@ -102,6 +102,10 @@ void App::Run() {
             return dbox({content, center(RenderSlashCommandDialog())});
         }
 
+        if (info_modal_open_) {
+            return dbox({content, center(RenderInfoModalDialog())});
+        }
+
         return content;
     });
 
@@ -248,8 +252,8 @@ ftxui::Element App::RenderFooter() {
             text(status),
             filler(),
             text(" Tokens: "),
-            text(" IN: " + std::to_string(input_tokens_)),
-            text(" OUT: " + std::to_string(output_tokens_)),
+            text(" \u2191 " + std::to_string(input_tokens_)),
+            text(" \u2193 " + std::to_string(output_tokens_)),
             filler(),
             text(" MODEL: " + model_ + " "),
             })
@@ -352,6 +356,11 @@ ftxui::Component App::BuildAndHandle() {
             if (model_list_modal_open_ && event == Event::Escape) {
                 model_list_modal_open_ = false;
                 input_.Clear();
+                return true;
+            }
+
+            if (info_modal_open_ && event == Event::Escape) {
+                info_modal_open_ = false;
                 return true;
             }
 
@@ -706,6 +715,11 @@ bool App::HandleSlashCommand()
         return true;
     }
 
+    if (command.type == SlashCommandType::SessionInfo) {
+        info_modal_open_ = true;
+        return true;
+    }
+
     agent_state_ = "Unbekannter Slash Command: " + input_.Text();
 
     return true;
@@ -997,5 +1011,79 @@ void App::SaveSession()
     }
 
     session_store_.Save(config_.session_name, messages_);
+}
+
+ftxui::Element App::RenderInfoModalDialog() {
+    using namespace ftxui;
+
+    Elements rows;
+
+    rows.push_back(text(" Session Info ") | bold);
+    rows.push_back(separator());
+
+    rows.push_back(
+        hbox({
+            text(" Session: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(config_.session_name),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Server: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(config_.base_api_url),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Backend: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(config_.llm_backend),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Model: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(model_),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Nachrichten: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(std::to_string(messages_.All().size()) + " Gesamt"),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Tokens: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text("\u2191 " + std::to_string(input_tokens_) + "    \u2193 " + std::to_string(output_tokens_)),
+            filler()
+            })
+    );
+
+    rows.push_back(separator());
+    rows.push_back(text("Esc schließen") | dim);
+
+    return vbox(rows)
+        | border
+        | size(WIDTH, LESS_THAN, 60)
+        | size(HEIGHT, LESS_THAN, 20)
+        | color(Color::LightSkyBlue1)
+        | bgcolor(Color::Black)
+        | clear_under;
 }
 
