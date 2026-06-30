@@ -4,12 +4,178 @@
 #include <cpr/cpr.h>
 
 #include <cstdint>
+#include <optional>
 #include <nlohmann/json_fwd.hpp>
 #include <string>
 
 #include "../tool/Tools.hpp"
 #include "../tool/ToolManager.hpp"
 #include "../tool/ToolFormat.hpp"
+
+namespace {
+
+std::string Trim(const std::string& text)
+{
+    const auto start = text.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const auto end = text.find_last_not_of(" \t\r\n");
+    return text.substr(start, end - start + 1);
+}
+
+bool IsPrefixOf(const std::string& value, const std::string& target)
+{
+    return value.size() <= target.size() &&
+        target.compare(0, value.size(), value) == 0;
+}
+
+bool IsPotentialTextToolCallPrefix(const std::string& content)
+{
+    std::string trimmed = Trim(content);
+
+    if (trimmed.empty()) {
+        return true;
+    }
+
+    if (trimmed[0] == '{') {
+        return true;
+    }
+
+    if (trimmed[0] == '<') {
+        return IsPrefixOf(trimmed, "<function") ||
+            IsPrefixOf(trimmed, "<tool_call>") ||
+            trimmed.starts_with("<function") ||
+            trimmed.starts_with("<tool_call>");
+    }
+
+    return false;
+}
+
+std::string StripToolCallWrapper(const std::string& content)
+{
+    std::string stripped = Trim(content);
+
+    const std::string open = "<tool_call>";
+    const std::string close = "</tool_call>";
+
+    if (stripped.starts_with(open)) {
+        stripped = Trim(stripped.substr(open.size()));
+    }
+
+    if (stripped.ends_with(close)) {
+        stripped = Trim(stripped.substr(0, stripped.size() - close.size()));
+    }
+
+    return stripped;
+}
+
+std::optional<ToolCall> ParseJsonTextToolCall(const std::string& content)
+{
+    try {
+        auto parsed = nlohmann::json::parse(StripToolCallWrapper(content));
+
+        if (!parsed.is_object() ||
+            !parsed.contains("name") ||
+            !parsed["name"].is_string() ||
+            !parsed.contains("arguments") ||
+            !parsed["arguments"].is_object()) {
+            return std::nullopt;
+        }
+
+        return ToolCall{
+            parsed["name"].get<std::string>(),
+            parsed["arguments"]
+        };
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<ToolCall> ParseFunctionTextToolCall(const std::string& content)
+{
+    const std::string text = StripToolCallWrapper(content);
+
+    const std::string function_open = "<function=";
+    const std::string parameter_open = "<parameter=";
+    const std::string parameter_close = "</parameter>";
+    const std::string function_close = "</function>";
+
+    const auto function_pos = text.find(function_open);
+    if (function_pos == std::string::npos) {
+        return std::nullopt;
+    }
+
+    const auto name_start = function_pos + function_open.size();
+    const auto name_end = text.find('>', name_start);
+    if (name_end == std::string::npos) {
+        return std::nullopt;
+    }
+
+    std::string name = Trim(text.substr(name_start, name_end - name_start));
+    if ((name.starts_with('"') && name.ends_with('"')) ||
+        (name.starts_with('\'') && name.ends_with('\''))) {
+        name = name.substr(1, name.size() - 2);
+    }
+
+    if (name.empty()) {
+        return std::nullopt;
+    }
+
+    nlohmann::json arguments = nlohmann::json::object();
+    size_t search_pos = name_end + 1;
+
+    while (true) {
+        const auto param_pos = text.find(parameter_open, search_pos);
+        if (param_pos == std::string::npos) {
+            break;
+        }
+
+        const auto key_start = param_pos + parameter_open.size();
+        const auto key_end = text.find('>', key_start);
+        if (key_end == std::string::npos) {
+            return std::nullopt;
+        }
+
+        std::string key = Trim(text.substr(key_start, key_end - key_start));
+        if ((key.starts_with('"') && key.ends_with('"')) ||
+            (key.starts_with('\'') && key.ends_with('\''))) {
+            key = key.substr(1, key.size() - 2);
+        }
+
+        const auto value_start = key_end + 1;
+        const auto value_end = text.find(parameter_close, value_start);
+        if (value_end == std::string::npos) {
+            return std::nullopt;
+        }
+
+        arguments[key] = Trim(text.substr(value_start, value_end - value_start));
+        search_pos = value_end + parameter_close.size();
+    }
+
+    if (arguments.empty()) {
+        return std::nullopt;
+    }
+
+    const auto close_pos = text.find(function_close, search_pos);
+    if (close_pos == std::string::npos) {
+        return std::nullopt;
+    }
+
+    return ToolCall{name, arguments};
+}
+
+std::optional<ToolCall> ParseTextToolCall(const std::string& content)
+{
+    if (auto call = ParseJsonTextToolCall(content)) {
+        return call;
+    }
+
+    return ParseFunctionTextToolCall(content);
+}
+
+} // namespace
 
 OllamaClient::OllamaClient(ToolManager& tools, const AppConfig& config)
     : tools_(tools),
@@ -258,13 +424,13 @@ OllamaClient::json OllamaClient::BuildExecCommandToolDefinition() const
             {"type", "function"},
             {"function", {
                 {"name", "exec_command"},
-                {"description", "Execute an allowlisted local development command without shell expansion. Use it to inspect or build the project. Prefer read_file and read_directory for reading files. Do not modify files unless explicitly requested by the user."},
+                {"description", "Executes an shell command, command is the shell command itself, args is an array of arguments."},
                 {"parameters", {
                     {"type", "object"},
                     {"properties", {
                         {"command", {
                             {"type", "string"},
-                            {"description", "Executable name, for example git, ls, pwd, cmake, make or g++"}
+                            {"description", "Single executable name, without parameters, for example git, ls, pwd, cmake, make or g++"}
                         }},
                         {"args", {
                             {"type", "array"},
@@ -394,6 +560,9 @@ void OllamaClient::ChatStream(
         bool has_tool_call = false;
         json assistant_message;
         json tool_call_json;
+        std::optional<ToolCall> text_tool_call;
+        std::string assistant_content;
+        bool buffering_possible_text_tool_call = true;
 
         int input_tokens = 0;
         int output_tokens = 0;
@@ -412,7 +581,22 @@ void OllamaClient::ChatStream(
                     }
 
                     if (message.contains("content")) {
-                        on_token(message["content"].get<std::string>());
+                        std::string content = message["content"].get<std::string>();
+
+                        if (buffering_possible_text_tool_call) {
+                            assistant_content += content;
+
+                            if (IsPotentialTextToolCallPrefix(assistant_content)) {
+                                return;
+                            }
+
+                            buffering_possible_text_tool_call = false;
+                            on_token(assistant_content);
+                            assistant_content.clear();
+                            return;
+                        }
+
+                        on_token(content);
                     }
                 }
 
@@ -428,15 +612,33 @@ void OllamaClient::ChatStream(
         total_input_tokens += input_tokens;
         total_output_tokens += output_tokens;
 
-        if (!has_tool_call) {
-            on_done(total_input_tokens, total_output_tokens);
-            return;
+        if (!assistant_content.empty()) {
+            text_tool_call = ParseTextToolCall(assistant_content);
+
+            if (!text_tool_call) {
+                on_token(assistant_content);
+            }
         }
 
-        ToolCall call{
-            tool_call_json["function"]["name"].get<std::string>(),
-            tool_call_json["function"]["arguments"]
-        };
+        if (!has_tool_call) {
+            if (!text_tool_call) {
+                on_done(total_input_tokens, total_output_tokens);
+                return;
+            }
+
+            has_tool_call = true;
+            assistant_message = {
+                {"role", "assistant"},
+                {"content", assistant_content}
+            };
+        }
+
+        ToolCall call = text_tool_call
+            ? *text_tool_call
+            : ToolCall{
+                tool_call_json["function"]["name"].get<std::string>(),
+                tool_call_json["function"]["arguments"]
+            };
 
         std::string ai_state_string = FormatToolArguments(call.arguments);
         on_aistate("Executing " + call.name + ": " + ai_state_string);
@@ -487,4 +689,3 @@ std::vector<std::string> OllamaClient::ListModels()
 
     return model_list;
 }
-
