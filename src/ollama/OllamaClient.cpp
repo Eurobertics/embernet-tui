@@ -382,7 +382,7 @@ void OllamaClient::ChatStream(
     int total_input_tokens = 0;
     int total_output_tokens = 0;
 
-    const int max_tool_steps = 20;
+    const int max_tool_steps = 40;
 
     for (int step = 0; step < max_tool_steps; ++step) {
         json request;

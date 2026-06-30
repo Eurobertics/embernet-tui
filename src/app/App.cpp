@@ -1075,13 +1075,31 @@ ftxui::Element App::RenderInfoModalDialog() {
             })
     );
 
+    rows.push_back(
+        hbox({
+            text(" Konfiguration: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(config_.GetConfigFile()),
+            filler()
+            })
+    );
+
+    rows.push_back(
+        hbox({
+            text(" Promptdatei: ") | size(WIDTH, EQUAL, 16) | bold,
+            separatorEmpty(),
+            text(config_.prompt_file->string()),
+            filler()
+            })
+    );
+
     rows.push_back(separator());
     rows.push_back(text("Esc schließen") | dim);
 
     return vbox(rows)
         | border
-        | size(WIDTH, LESS_THAN, 60)
-        | size(HEIGHT, LESS_THAN, 20)
+        | size(WIDTH, LESS_THAN, 120)
+        | size(HEIGHT, LESS_THAN, 30)
         | color(Color::LightSkyBlue1)
         | bgcolor(Color::Black)
         | clear_under;
